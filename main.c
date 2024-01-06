@@ -172,7 +172,7 @@ void* consume(void* thread_data) {
                     pthread_mutex_lock(&data->mutex_write);
                     pthread_cond_signal(&data->is_writing);
                     zapis(&vzor);
-                    pthread_mutex_unlock(&data->mutex_write)
+                    pthread_mutex_unlock(&data->mutex_write);
 
 
                 }
