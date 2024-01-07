@@ -22,19 +22,21 @@ GENERATE_BUFFER(struct vzor, vzor)
 typedef struct thread_data {
     struct buffer_vzor buf;
     short port;
-    ACTIVE_SOCKET* my_socket;
+    //ACTIVE_SOCKET* my_socket;
     pthread_mutex_t zapis_mutex;
     PASSIVE_SOCKET* passiveSocket;
     int pocetPripojenych;
 } THREAD_DATA;
-
+typedef struct thread_data2 {
+    THREAD_DATA * threadData;
+    ACTIVE_SOCKET activeSocket;
+} TREAD_DATA2;
 void zapis(char * string);
 
 void thread_data_init(struct thread_data* data, int buffer_capacity,
-                      short port, ACTIVE_SOCKET* my_socket,PASSIVE_SOCKET* passiveSocket) {
+                      short port,PASSIVE_SOCKET* passiveSocket) {
     buffer_vzor_init(&data->buf, buffer_capacity);
     data->port = port;
-    data->my_socket = my_socket;
     data->passiveSocket = passiveSocket;
     pthread_mutex_init(&data->zapis_mutex,NULL);
     data->pocetPripojenych =0;
@@ -43,7 +45,6 @@ void thread_data_init(struct thread_data* data, int buffer_capacity,
 void thread_data_destroy(struct thread_data* data) {
     buffer_vzor_destroy(&data->buf);
     data->port = 0;
-    data->my_socket = NULL;
     data->passiveSocket = NULL;
     pthread_mutex_destroy(&data->zapis_mutex);
     data->pocetPripojenych =0;
@@ -51,22 +52,28 @@ void thread_data_destroy(struct thread_data* data) {
 
 void* consume(void* thread_data);
 void* read_active_socket(void* thread_data) {
-    THREAD_DATA *data = (THREAD_DATA *)thread_data;
+    TREAD_DATA2 *data = (TREAD_DATA2 *)thread_data;
     pthread_t spracuj;
     pthread_create(&spracuj,NULL, consume,data);
-    active_socket_start_reading(data->my_socket);
+    active_socket_start_reading(&data->activeSocket);
     pthread_join(spracuj,NULL);
+    active_socket_destroy(&data->activeSocket);
+    free(data);
     return NULL;
 }
 
 void* process_client_data(void* thread_data) {
     THREAD_DATA *data = (THREAD_DATA *)thread_data;
     passive_socket_start_listening(data->passiveSocket, data->port);
-    while(passive_socket_wait_for_client(data->passiveSocket, data->my_socket)) {
+    while(passive_socket_is_listening(data->passiveSocket)) {
+        TREAD_DATA2* treadData2 = malloc(sizeof (struct thread_data2));
+        treadData2->threadData = data;
+        active_socket_init(&treadData2->activeSocket);
+        passive_socket_wait_for_client(data->passiveSocket, &treadData2->activeSocket);
         data->pocetPripojenych++;
         pthread_t  client;
-        pthread_create(&client, NULL,read_active_socket,data);
-        pthread_join(client, NULL);
+        pthread_create(&client, NULL,read_active_socket,treadData2);
+        pthread_detach(client);
     }
     return NULL;
 }
@@ -101,7 +108,7 @@ void removeNewLine(char * string) {
 
 }
 
-void citaj(struct thread_data* data , int riadok){
+void citaj(struct thread_data2* data , int riadok){
 
     FILE * p_soubor = fopen("zoznam_vzorov.txt", "r");
     int pocet = 0;
@@ -117,7 +124,7 @@ void citaj(struct thread_data* data , int riadok){
                 CHAR_BUFFER charBuffer;
                 char_buffer_init(&charBuffer);
                 char_buffer_append(&charBuffer,buffer, strlen(buffer));
-                active_socket_write_data(data->my_socket,&charBuffer);
+                active_socket_write_data(&data->activeSocket,&charBuffer);
                 break;
             }
 
@@ -150,42 +157,42 @@ bool isNumeric(const char* string) {
 }
 
 void* consume(void* thread_data) {
-    struct thread_data *data = (struct thread_data *) thread_data;
+    struct thread_data2 *data = (struct thread_data2 *) thread_data;
     _Bool ukonceny = false;
-    while(!ukonceny) {
+    while (!ukonceny) {
         struct char_buffer vzor;
         char_buffer_init(&vzor);
-        if (data->my_socket != NULL) {
-            while (! active_socket_try_get_read_data(data->my_socket, &vzor)){
-                sleep(2);
-            }
-            char *string = vzor.data;
-            if (strcmp(string, "download") == 0) {
-                int pocet = pocetRiadkovVSubore();
-                char txt[20] ={0};
-                sprintf(txt,"%d",pocet);
-                CHAR_BUFFER charBuffer;
-                char_buffer_init(&charBuffer);
-                char_buffer_append(&charBuffer, txt, strlen(txt));
-                active_socket_write_data(data->my_socket, &charBuffer);
-            } else if (isNumeric(string)) {
-                int cisloRiadku = atoi(string);
-                citaj(data, cisloRiadku);
-            } else if (strcmp(string, data->my_socket->end_message) == 0) {
-                active_socket_stop_reading(data->my_socket);
-                ukonceny = true;
-                data->pocetPripojenych--;
-                if (data->pocetPripojenych == 0) {
-                    passive_socket_stop_listening(data->passiveSocket);
-                }
-            } else {
-                pthread_mutex_lock(&data->zapis_mutex);
-                zapis(string);
-                pthread_mutex_unlock(&data->zapis_mutex);
-            }
+
+        while (!active_socket_try_get_read_data(&data->activeSocket, &vzor)) {
+            sleep(2);
         }
-        char_buffer_destroy(&vzor);
-    }
+        char *string = vzor.data;
+        if (strcmp(string, "download") == 0) {
+            int pocet = pocetRiadkovVSubore();
+            char txt[20] = {0};
+            sprintf(txt, "%d", pocet);
+            CHAR_BUFFER charBuffer;
+            char_buffer_init(&charBuffer);
+            char_buffer_append(&charBuffer, txt, strlen(txt));
+            active_socket_write_data(&data->activeSocket, &charBuffer);
+        } else if (isNumeric(string)) {
+            int cisloRiadku = atoi(string);
+            citaj(data, cisloRiadku);
+        } else if (strcmp(string, data->activeSocket.end_message) == 0) {
+            active_socket_stop_reading(&data->activeSocket);
+            ukonceny = true;
+            data->threadData->pocetPripojenych--;
+            if (data->threadData->pocetPripojenych == 0) {
+                passive_socket_stop_listening(data->threadData->passiveSocket);
+            }
+        } else {
+            pthread_mutex_lock(&data->threadData->zapis_mutex);
+            zapis(string);
+            pthread_mutex_unlock(&data->threadData->zapis_mutex);
+        }
+
+    char_buffer_destroy(&vzor);
+}
     return NULL;
 }
 
@@ -203,16 +210,13 @@ void zapis(char * string) {
 int main() {
     pthread_t th_receive;
     struct thread_data data;
-    struct active_socket my_socket;
     PASSIVE_SOCKET p_socket;
     passive_socket_init(&p_socket);
-    active_socket_init(&my_socket);
-    thread_data_init(&data, 10, 12389, &my_socket,&p_socket);
+    thread_data_init(&data, 10, 12389,&p_socket);
     pthread_create(&th_receive, NULL, process_client_data, &data);
     pthread_join(th_receive, NULL);
 
     thread_data_destroy(&data);
-    active_socket_destroy(&my_socket);
     passive_socket_destroy(&p_socket);
     return 0;
 }
