@@ -106,7 +106,6 @@ void active_socket_start_reading(struct active_socket* self) {
                         linked_list_char_buffer_add(&self->received_data, &r_buffer);
                         pthread_mutex_unlock(&self->mutex_received_data);
                         char_buffer_clear(&r_buffer);
-
                     }
                     last_i = last_i + 1;
                     first_i = last_i;
@@ -119,7 +118,6 @@ void active_socket_start_reading(struct active_socket* self) {
             }
         }
     }
-
     char_buffer_destroy(&r_buffer);
 #undef BUFFER_LENGTH
 }

@@ -1,4 +1,0 @@
-/usr/bin/cmake -DCMAKE_BUILD_TYPE=Debug -G "CodeBlocks - Unix Makefiles" -S /tmp/tmp.41KBJRtAQo -B /tmp/tmp.41KBJRtAQo/cmake-build-debug-frios
--- Configuring done
--- Generating done
--- Build files have been written to: /tmp/tmp.41KBJRtAQo/cmake-build-debug-frios
