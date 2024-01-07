@@ -13,16 +13,9 @@
 #include "pos_sockets/active_socket.h"
 #include "pos_sockets/passive_socket.h"
 
-typedef struct vzor{
-    char* vzor;
-};
 
-
-GENERATE_BUFFER(struct vzor, vzor)
 typedef struct thread_data {
-    struct buffer_vzor buf;
     short port;
-    //ACTIVE_SOCKET* my_socket;
     pthread_mutex_t zapis_mutex;
     PASSIVE_SOCKET* passiveSocket;
     int pocetPripojenych;
@@ -35,7 +28,6 @@ void zapis(char * string);
 
 void thread_data_init(struct thread_data* data, int buffer_capacity,
                       short port,PASSIVE_SOCKET* passiveSocket) {
-    buffer_vzor_init(&data->buf, buffer_capacity);
     data->port = port;
     data->passiveSocket = passiveSocket;
     pthread_mutex_init(&data->zapis_mutex,NULL);
@@ -43,7 +35,6 @@ void thread_data_init(struct thread_data* data, int buffer_capacity,
 }
 
 void thread_data_destroy(struct thread_data* data) {
-    buffer_vzor_destroy(&data->buf);
     data->port = 0;
     data->passiveSocket = NULL;
     pthread_mutex_destroy(&data->zapis_mutex);
@@ -125,6 +116,7 @@ void citaj(struct thread_data2* data , int riadok){
                 char_buffer_init(&charBuffer);
                 char_buffer_append(&charBuffer,buffer, strlen(buffer));
                 active_socket_write_data(&data->activeSocket,&charBuffer);
+                char_buffer_destroy(&charBuffer);
                 break;
             }
 
@@ -175,6 +167,7 @@ void* consume(void* thread_data) {
             char_buffer_init(&charBuffer);
             char_buffer_append(&charBuffer, txt, strlen(txt));
             active_socket_write_data(&data->activeSocket, &charBuffer);
+            char_buffer_destroy(&charBuffer);
         } else if (isNumeric(string)) {
             int cisloRiadku = atoi(string);
             citaj(data, cisloRiadku);
