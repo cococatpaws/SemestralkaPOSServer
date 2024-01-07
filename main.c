@@ -16,18 +16,6 @@ typedef struct vzor{
     char* vzor;
 } VZOR;
 
-_Bool vzor_try_deserialize(struct vzor* vzor, struct char_buffer* buf) {
-    char *str = buf->data;
-    if(str != NULL) {
-        sscanf(buf->data, "%s",
-
-               vzor->vzor);
-        return true;
-    }
-    else {
-        return false;
-    }
-}
 
 GENERATE_BUFFER(struct vzor, vzor)
 typedef struct thread_data {
@@ -81,7 +69,7 @@ void* process_client_data(void* thread_data) {
     passive_socket_destroy(&p_socket);
     return NULL;
 }
-_Bool try_get_client_vzor(struct active_socket* my_sock, struct vzor* vzor) {
+void try_get_client_vzor(struct active_socket* my_sock, struct vzor* vzor) {
     _Bool result = false;
     CHAR_BUFFER r_buf;
     char_buffer_init(&r_buf);
@@ -89,18 +77,15 @@ _Bool try_get_client_vzor(struct active_socket* my_sock, struct vzor* vzor) {
     if(active_socket_try_get_read_data(my_sock, &r_buf)) {
         if(r_buf.size > 0) {
             if(active_socket_is_end_message(my_sock, &r_buf)) {
-            } else if (vzor_try_deserialize(vzor, &r_buf)) {
-                result = true;
             } else {
-                printf("Klient poslal spravu v zlom formate\ndata: %s\n", r_buf.data);
+                vzor->vzor  = r_buf.data;
             }
         }
     }
     char_buffer_destroy(&r_buf);
-    return result;
 }
 int pocetRiadkovVSubore() {
-    FILE * p_soubor = fopen("zoznam_vzorov.txt", "r");
+    FILE * p_soubor = fopen("cmake-build-debug-frios2/zoznam_vzorov.txt", "r");
     int pocet = 0;
     if (p_soubor != NULL)
     {
@@ -109,13 +94,14 @@ int pocetRiadkovVSubore() {
         {
             pocet++;
         }
+        fclose("cmake-build-debug-frios2/zoznam_vzorov.txt");
     }
-    fclose("zoznam_vzorov.txt");
+
     return pocet;
 }
 void citaj(struct thread_data* data , int riadok){
 
-    FILE * p_soubor = fopen("zoznam_vzorov.txt", "r");
+    FILE * p_soubor = fopen("cmake-build-debug-frios2/zoznam_vzorov.txt", "r");
     int pocet = 0;
     char* txt;
     if (p_soubor != NULL)
@@ -134,38 +120,43 @@ void citaj(struct thread_data* data , int riadok){
             }
 
         }
+        fclose("cmake-build-debug-frios2/zoznam_vzorov.txt");
     }
-    fclose("zoznam_vzorov.txt");
+}
+size_t custom_strlen(const char * str) {
+    size_t length = 0;
+
+    while (str[length] != '\0') {
+        length++;
+    }
+
+    return length;
 }
 void* consume(void* thread_data) {
     struct thread_data *data = (struct thread_data *) thread_data;
     struct vzor vzor;
     if (data->my_socket != NULL) {
-        if (try_get_client_vzor(data->my_socket, &vzor)) {
-                if (strcmp(vzor.vzor, "daj") == 0) {
-                    if (!pthread_cond_wait(&data->is_writing, &data->mutex_write)) {
-                        int pocet = pocetRiadkovVSubore();
-                        const char * txt = pocet+"";
-                        CHAR_BUFFER charBuffer;
-                        char_buffer_init(&charBuffer);
-                        char_buffer_append(&charBuffer, txt, sizeof(txt));
-                        active_socket_write_data(data->my_socket, &charBuffer);
-                    }
-                } else if (strcmp(vzor.vzor, "citaj") == 0) {
-                    if (!pthread_cond_wait(&data->is_writing, &data->mutex_write)) {
-                        citaj(data, (int)vzor.vzor[0]);
-                    }
-                } else {
-                    pthread_mutex_lock(&data->mutex_write);
-                    pthread_cond_signal(&data->is_writing);
-                    zapis(&vzor);
-                    pthread_mutex_unlock(&data->mutex_write);
+        try_get_client_vzor(data->my_socket, &vzor);
+            if (strcmp(vzor.vzor, "daj") == 0) {
+                int pocet = pocetRiadkovVSubore();
+                const char * txt = pocet+"";
+                CHAR_BUFFER charBuffer;
+                char_buffer_init(&charBuffer);
+                char_buffer_append(&charBuffer, txt, custom_strlen(txt));
+                active_socket_write_data(data->my_socket, &charBuffer);
+
+            } else if (strcmp(vzor.vzor, "citaj") == 0) {
+                    citaj(data, (int)vzor.vzor[0]);
+            } else {
+                pthread_mutex_lock(&data->mutex_write);
+                pthread_cond_signal(&data->is_writing);
+                zapis(&vzor);
+                pthread_mutex_unlock(&data->mutex_write);
 
 
-                }
-        }
-
+            }
     }
+
     return NULL;
 }
 
@@ -173,8 +164,9 @@ void zapis(struct vzor *pVzor) {
     FILE * p_soubor = fopen("zoznam_vzorov.txt", "a");
     if (p_soubor != NULL)
     {
-        const char* txt = pVzor->vzor + '\n';
-        fprintf(p_soubor, txt );
+        fprintf(p_soubor, pVzor->vzor);
+        fprintf(p_soubor, "/n");
+        fclose("zoznam_vzorov.txt");
     }
 }
 
