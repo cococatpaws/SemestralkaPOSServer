@@ -61,8 +61,8 @@ void* process_client_data(void* thread_data) {
     THREAD_DATA *data = (THREAD_DATA *)thread_data;
     passive_socket_start_listening(data->passiveSocket, data->port);
     while(passive_socket_wait_for_client(data->passiveSocket, data->my_socket)) {
-        pthread_t  client;
         data->pocetPripojenych++;
+        pthread_t  client;
         pthread_create(&client, NULL,read_active_socket,data);
         pthread_join(client, NULL);
     }
