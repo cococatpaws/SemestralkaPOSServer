@@ -126,9 +126,10 @@ void active_socket_start_reading(struct active_socket* self) {
 
 void active_socket_write_data(struct active_socket* self, struct char_buffer* message) {
     pthread_mutex_lock(&self->mutex_writing);
-    write(self->socket_descriptor, message->data, message->size);
     char end_char = SOCKET_TERMINATE_CHAR;
-    write(self->socket_descriptor, &end_char, sizeof(end_char));
+    char_buffer_append(message,&end_char, sizeof(end_char));
+    write(self->socket_descriptor, message->data, message->size);
+    printf("active: %s\n",message->data);
     pthread_mutex_unlock(&self->mutex_writing);
 }
 

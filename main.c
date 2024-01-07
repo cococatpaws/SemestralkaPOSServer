@@ -52,8 +52,10 @@ void thread_data_destroy(struct thread_data* data) {
 void* consume(void* thread_data);
 void* read_active_socket(void* thread_data) {
     THREAD_DATA *data = (THREAD_DATA *)thread_data;
+    pthread_t spracuj;
+    pthread_create(&spracuj,NULL, consume,data);
     active_socket_start_reading(data->my_socket);
-    consume(data);
+    pthread_join(spracuj,NULL);
     return NULL;
 }
 
@@ -71,7 +73,7 @@ void* process_client_data(void* thread_data) {
 
 
 int pocetRiadkovVSubore() {
-    FILE * p_soubor = fopen("cmake-build-debug-frios2/zoznam_vzorov.txt", "r");
+    FILE * p_soubor = fopen("zoznam_vzorov.txt", "r");
     int pocet = 0;
     if (p_soubor != NULL)
     {
@@ -103,7 +105,6 @@ void citaj(struct thread_data* data , int riadok){
 
     FILE * p_soubor = fopen("zoznam_vzorov.txt", "r");
     int pocet = 0;
-    char* txt;
     if (p_soubor != NULL)
     {
         char buffer[1024];
@@ -112,9 +113,10 @@ void citaj(struct thread_data* data , int riadok){
             pocet++;
             if(pocet == riadok){
                 removeNewLine(buffer);
+
                 CHAR_BUFFER charBuffer;
                 char_buffer_init(&charBuffer);
-                char_buffer_append(&charBuffer,txt, sizeof(txt));
+                char_buffer_append(&charBuffer,buffer, strlen(buffer));
                 active_socket_write_data(data->my_socket,&charBuffer);
                 break;
             }
@@ -149,33 +151,41 @@ bool isNumeric(const char* string) {
 
 void* consume(void* thread_data) {
     struct thread_data *data = (struct thread_data *) thread_data;
-    struct char_buffer vzor;
-    char_buffer_init(&vzor);
-    if (data->my_socket != NULL) {
-        active_socket_try_get_read_data(data->my_socket, &vzor);
-        char *string = vzor.data;
-        if (strcmp(string, "download") == 0) {
-            int pocet = pocetRiadkovVSubore();
-            const char *txt = "" + pocet;
-            CHAR_BUFFER charBuffer;
-            char_buffer_init(&charBuffer);
-            char_buffer_append(&charBuffer, txt, custom_strlen(txt));
-            active_socket_write_data(data->my_socket, &charBuffer);
-        } else if (isNumeric(string)) {
-            int cisloRiadku = atoi(string);
-            citaj(data, cisloRiadku);
-        } else if (strcmp(string, data->my_socket->end_message) == 0) {
-            data->pocetPripojenych--;
-            if (data->pocetPripojenych == 0) {
-                passive_socket_stop_listening(data->passiveSocket);
+    _Bool ukonceny = false;
+    while(!ukonceny) {
+        struct char_buffer vzor;
+        char_buffer_init(&vzor);
+        if (data->my_socket != NULL) {
+            while (! active_socket_try_get_read_data(data->my_socket, &vzor)){
+                sleep(2);
             }
-        } else {
-            pthread_mutex_lock(&data->zapis_mutex);
-            zapis(string);
-            pthread_mutex_unlock(&data->zapis_mutex);
+            char *string = vzor.data;
+            if (strcmp(string, "download") == 0) {
+                int pocet = pocetRiadkovVSubore();
+                char txt[20] ={0};
+                sprintf(txt,"%d",pocet);
+                CHAR_BUFFER charBuffer;
+                char_buffer_init(&charBuffer);
+                char_buffer_append(&charBuffer, txt, strlen(txt));
+                active_socket_write_data(data->my_socket, &charBuffer);
+            } else if (isNumeric(string)) {
+                int cisloRiadku = atoi(string);
+                citaj(data, cisloRiadku);
+            } else if (strcmp(string, data->my_socket->end_message) == 0) {
+                active_socket_stop_reading(data->my_socket);
+                ukonceny = true;
+                data->pocetPripojenych--;
+                if (data->pocetPripojenych == 0) {
+                    passive_socket_stop_listening(data->passiveSocket);
+                }
+            } else {
+                pthread_mutex_lock(&data->zapis_mutex);
+                zapis(string);
+                pthread_mutex_unlock(&data->zapis_mutex);
+            }
         }
+        char_buffer_destroy(&vzor);
     }
-    char_buffer_destroy(&vzor);
     return NULL;
 }
 
@@ -197,7 +207,7 @@ int main() {
     PASSIVE_SOCKET p_socket;
     passive_socket_init(&p_socket);
     active_socket_init(&my_socket);
-    thread_data_init(&data, 10, 12388, &my_socket,&p_socket);
+    thread_data_init(&data, 10, 12389, &my_socket,&p_socket);
     pthread_create(&th_receive, NULL, process_client_data, &data);
     pthread_join(th_receive, NULL);
 
