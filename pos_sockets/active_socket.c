@@ -119,6 +119,7 @@ void active_socket_start_reading(struct active_socket* self) {
             }
         }
     }
+
     char_buffer_destroy(&r_buffer);
 #undef BUFFER_LENGTH
 }
@@ -127,7 +128,7 @@ void active_socket_write_data(struct active_socket* self, struct char_buffer* me
     pthread_mutex_lock(&self->mutex_writing);
     write(self->socket_descriptor, message->data, message->size);
     write(self->socket_descriptor, SOCKET_TERMINATE_CHAR, sizeof(SOCKET_TERMINATE_CHAR));
-    pthread_mutex_unlock(&self->mutex_writing);
+    pthread_mutex_lock(&self->mutex_writing);
 }
 
 void active_socket_write_end_message(struct active_socket* self) {

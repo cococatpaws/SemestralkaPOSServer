@@ -14,36 +14,27 @@
 
 typedef struct vzor{
     char* vzor;
-} VZOR;
+};
 
 
 GENERATE_BUFFER(struct vzor, vzor)
 typedef struct thread_data {
     struct buffer_vzor buf;
-    pthread_mutex_t mutex_write;
-    pthread_cond_t is_writing;
-
     short port;
     ACTIVE_SOCKET* my_socket;
 } THREAD_DATA;
 
 void zapis(struct vzor *pVzor);
 
-void thread_data_init(struct thread_data* data, long long replications_count, int buffer_capacity,
+void thread_data_init(struct thread_data* data, int buffer_capacity,
                       short port, ACTIVE_SOCKET* my_socket) {
     buffer_vzor_init(&data->buf, buffer_capacity);
-    pthread_mutex_init(&data->mutex_write, NULL);
-    pthread_cond_init(&data->is_writing, NULL);
-
     data->port = port;
     data->my_socket = my_socket;
 }
 
 void thread_data_destroy(struct thread_data* data) {
     buffer_vzor_destroy(&data->buf);
-    pthread_mutex_destroy(&data->mutex_write);
-    pthread_cond_destroy(&data->is_writing);
-
     data->port = 0;
     data->my_socket = NULL;
 }
@@ -70,7 +61,6 @@ void* process_client_data(void* thread_data) {
     return NULL;
 }
 void try_get_client_vzor(struct active_socket* my_sock, struct vzor* vzor) {
-    _Bool result = false;
     CHAR_BUFFER r_buf;
     char_buffer_init(&r_buf);
 
@@ -94,7 +84,7 @@ int pocetRiadkovVSubore() {
         {
             pocet++;
         }
-        fclose("cmake-build-debug-frios2/zoznam_vzorov.txt");
+        fclose(p_soubor);
     }
 
     return pocet;
@@ -120,7 +110,7 @@ void citaj(struct thread_data* data , int riadok){
             }
 
         }
-        fclose("cmake-build-debug-frios2/zoznam_vzorov.txt");
+        fclose(p_soubor);
     }
 }
 size_t custom_strlen(const char * str) {
@@ -138,23 +128,19 @@ void* consume(void* thread_data) {
     if (data->my_socket != NULL) {
         try_get_client_vzor(data->my_socket, &vzor);
             if (strcmp(vzor.vzor, "daj") == 0) {
-                int pocet = pocetRiadkovVSubore();
-                const char * txt = pocet+"";
-                CHAR_BUFFER charBuffer;
-                char_buffer_init(&charBuffer);
-                char_buffer_append(&charBuffer, txt, custom_strlen(txt));
-                active_socket_write_data(data->my_socket, &charBuffer);
-
-            } else if (strcmp(vzor.vzor, "citaj") == 0) {
-                    citaj(data, (int)vzor.vzor[0]);
-            } else {
-                pthread_mutex_lock(&data->mutex_write);
-                pthread_cond_signal(&data->is_writing);
-                zapis(&vzor);
-                pthread_mutex_unlock(&data->mutex_write);
-
-
+                    int pocet = pocetRiadkovVSubore();
+                    const char *txt = "" + pocet;
+                    CHAR_BUFFER charBuffer;
+                    char_buffer_init(&charBuffer);
+                    char_buffer_append(&charBuffer, txt, custom_strlen(txt));
+                    active_socket_write_data(data->my_socket, &charBuffer);
             }
+            else if (strcmp(vzor.vzor, "citaj") == 0) {
+                citaj(data, (int) vzor.vzor[0]);
+            } else {
+                zapis(&vzor);
+            }
+
     }
 
     return NULL;
@@ -164,9 +150,9 @@ void zapis(struct vzor *pVzor) {
     FILE * p_soubor = fopen("zoznam_vzorov.txt", "a");
     if (p_soubor != NULL)
     {
-        fprintf(p_soubor, pVzor->vzor);
+        fprintf(p_soubor, "%s", pVzor->vzor);
         fprintf(p_soubor, "/n");
-        fclose("zoznam_vzorov.txt");
+        if(fclose(p_soubor) == EOF) printf("Subor sa nepodarilo uzavrieť");
     }
 }
 
@@ -175,7 +161,7 @@ int main() {
     struct thread_data data;
     struct active_socket my_socket;
     active_socket_init(&my_socket);
-    thread_data_init(&data, 100000, 10, 12289, &my_socket);
+    thread_data_init(&data, 10, 12289, &my_socket);
     pthread_create(&th_receive, NULL, process_client_data, &data);
     pthread_join(th_receive, NULL);
 
