@@ -4,6 +4,7 @@
 #include <string.h>
 #include <strings.h>
 #include <pthread.h>
+#include <ctype.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -24,7 +25,7 @@ typedef struct thread_data {
     ACTIVE_SOCKET* my_socket;
 } THREAD_DATA;
 
-void zapis(struct vzor *pVzor);
+void zapis(char * string);
 
 void thread_data_init(struct thread_data* data, int buffer_capacity,
                       short port, ACTIVE_SOCKET* my_socket) {
@@ -38,6 +39,7 @@ void thread_data_destroy(struct thread_data* data) {
     data->port = 0;
     data->my_socket = NULL;
 }
+
 void* consume(void* thread_data);
 void* read_active_socket(void* thread_data) {
     THREAD_DATA *data = (THREAD_DATA *)thread_data;
@@ -45,6 +47,7 @@ void* read_active_socket(void* thread_data) {
     consume(data);
     return NULL;
 }
+
 void* process_client_data(void* thread_data) {
     THREAD_DATA *data = (THREAD_DATA *)thread_data;
     PASSIVE_SOCKET p_socket;
@@ -60,6 +63,7 @@ void* process_client_data(void* thread_data) {
     passive_socket_destroy(&p_socket);
     return NULL;
 }
+
 void try_get_client_vzor(struct active_socket* my_sock, struct vzor* vzor) {
     CHAR_BUFFER r_buf;
     char_buffer_init(&r_buf);
@@ -74,6 +78,7 @@ void try_get_client_vzor(struct active_socket* my_sock, struct vzor* vzor) {
     }
     char_buffer_destroy(&r_buf);
 }
+
 int pocetRiadkovVSubore() {
     FILE * p_soubor = fopen("cmake-build-debug-frios2/zoznam_vzorov.txt", "r");
     int pocet = 0;
@@ -89,9 +94,23 @@ int pocetRiadkovVSubore() {
 
     return pocet;
 }
+
+void removeNewLine(char * string) {
+    size_t length = 0;
+
+    while (string[length] != '\0') {
+        if (string[length] == '\n') {
+            string[length] = '\0';
+            break;
+        }
+        ++length;
+    }
+
+}
+
 void citaj(struct thread_data* data , int riadok){
 
-    FILE * p_soubor = fopen("cmake-build-debug-frios2/zoznam_vzorov.txt", "r");
+    FILE * p_soubor = fopen("zoznam_vzorov.txt", "r");
     int pocet = 0;
     char* txt;
     if (p_soubor != NULL)
@@ -101,7 +120,7 @@ void citaj(struct thread_data* data , int riadok){
         {
             pocet++;
             if(pocet == riadok){
-                txt = buffer - '\n';
+                removeNewLine(buffer);
                 CHAR_BUFFER charBuffer;
                 char_buffer_init(&charBuffer);
                 char_buffer_append(&charBuffer,txt, sizeof(txt));
@@ -113,6 +132,7 @@ void citaj(struct thread_data* data , int riadok){
         fclose(p_soubor);
     }
 }
+
 size_t custom_strlen(const char * str) {
     size_t length = 0;
 
@@ -122,12 +142,27 @@ size_t custom_strlen(const char * str) {
 
     return length;
 }
+
+bool isNumeric(const char* string) {
+    size_t length = 0;
+
+    while (string[length] != '\0') {
+        if (!isdigit(string[length])) {
+            return false;
+        }
+        ++length;
+    }
+
+    return true;
+}
+
 void* consume(void* thread_data) {
     struct thread_data *data = (struct thread_data *) thread_data;
-    struct vzor vzor;
+
+    char * string = data->my_socket->received_data.first->data.data;
+
     if (data->my_socket != NULL) {
-        try_get_client_vzor(data->my_socket, &vzor);
-            if (strcmp(vzor.vzor, "daj") == 0) {
+            if (strcmp(string, "download") == 0) {
                     int pocet = pocetRiadkovVSubore();
                     const char *txt = "" + pocet;
                     CHAR_BUFFER charBuffer;
@@ -135,10 +170,11 @@ void* consume(void* thread_data) {
                     char_buffer_append(&charBuffer, txt, custom_strlen(txt));
                     active_socket_write_data(data->my_socket, &charBuffer);
             }
-            else if (strcmp(vzor.vzor, "citaj") == 0) {
-                citaj(data, (int) vzor.vzor[0]);
+            else if (isNumeric(string)) {
+                int cisloRiadku = atoi(string);
+                citaj(data, cisloRiadku);
             } else {
-                zapis(&vzor);
+                zapis(string);
             }
 
     }
@@ -146,12 +182,13 @@ void* consume(void* thread_data) {
     return NULL;
 }
 
-void zapis(struct vzor *pVzor) {
+void zapis(char * string) {
     FILE * p_soubor = fopen("zoznam_vzorov.txt", "a");
+
     if (p_soubor != NULL)
     {
-        fprintf(p_soubor, "%s", pVzor->vzor);
-        fprintf(p_soubor, "/n");
+        fprintf(p_soubor, "%s", string);
+        fprintf(p_soubor, "\n");
         if(fclose(p_soubor) == EOF) printf("Subor sa nepodarilo uzavrieť");
     }
 }
@@ -161,7 +198,7 @@ int main() {
     struct thread_data data;
     struct active_socket my_socket;
     active_socket_init(&my_socket);
-    thread_data_init(&data, 10, 12289, &my_socket);
+    thread_data_init(&data, 10, 12389, &my_socket);
     pthread_create(&th_receive, NULL, process_client_data, &data);
     pthread_join(th_receive, NULL);
 

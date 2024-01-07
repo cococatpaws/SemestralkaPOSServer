@@ -1,0 +1,3 @@
+/tmp/SemestralkaPOSServer/cmake-build-debug_frios/CMakeFiles/rebuild_cache.dir
+/tmp/SemestralkaPOSServer/cmake-build-debug_frios/CMakeFiles/edit_cache.dir
+/tmp/SemestralkaPOSServer/cmake-build-debug_frios/CMakeFiles/SemestralkaPOSServer.dir
